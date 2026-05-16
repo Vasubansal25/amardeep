@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Task = require('../models/Task');
 const Project = require('../models/Project');
+const User = require('../models/User');
 const auth = require('../middleware/auth');
 const roleCheck = require('../middleware/roleCheck');
 
@@ -32,11 +33,18 @@ router.post('/', auth, roleCheck('admin'), [
       return res.status(404).json({ message: 'Project not found or access denied' });
     }
 
-    // If assigning to someone, verify they are a project member
+    // If assigning to someone, verify they are registered and a member is created if needed
     if (assignedTo) {
-      const isMember = proj.members.some(m => m.toString() === assignedTo);
-      if (!isMember) {
-        return res.status(400).json({ message: 'Assigned user is not a project member' });
+      const assignedUser = await User.findById(assignedTo);
+      if (!assignedUser) {
+        return res.status(404).json({ message: 'Assigned user not found' });
+      }
+      if (assignedUser.role !== 'member') {
+        return res.status(400).json({ message: 'Assigned user must be a member' });
+      }
+      if (!proj.members.some(m => m.toString() === assignedTo)) {
+        proj.members.push(assignedTo);
+        await proj.save();
       }
     }
 
@@ -131,7 +139,25 @@ router.put('/:id', auth, async (req, res) => {
       const { title, description, assignedTo, priority, category, dueDate, status } = req.body;
       if (title) task.title = title;
       if (description !== undefined) task.description = description;
-      if (assignedTo !== undefined) task.assignedTo = assignedTo || null;
+      if (assignedTo !== undefined) {
+        if (assignedTo) {
+          const assignedUser = await User.findById(assignedTo);
+          if (!assignedUser) {
+            return res.status(404).json({ message: 'Assigned user not found' });
+          }
+          if (assignedUser.role !== 'member') {
+            return res.status(400).json({ message: 'Assigned user must be a member' });
+          }
+          const project = await Project.findById(task.project);
+          if (project && !project.members.some(m => m.toString() === assignedTo)) {
+            project.members.push(assignedTo);
+            await project.save();
+          }
+          task.assignedTo = assignedTo;
+        } else {
+          task.assignedTo = null;
+        }
+      }
       if (priority) task.priority = priority;
       if (category) task.category = category;
       if (dueDate) task.dueDate = dueDate;

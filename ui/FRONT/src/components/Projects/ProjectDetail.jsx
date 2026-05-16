@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../Context/AuthProvider';
-import { projectsAPI, tasksAPI } from '../../api/index';
+import { projectsAPI, tasksAPI, usersAPI } from '../../api/index';
 
 function ProjectDetail() {
   const { id } = useParams();
@@ -12,6 +12,7 @@ function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [memberEmail, setMemberEmail] = useState('');
   const [memberError, setMemberError] = useState('');
+  const [assignableUsers, setAssignableUsers] = useState([]);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskForm, setTaskForm] = useState({ title:'', description:'', assignedTo:'', priority:'medium', category:'', dueDate:'' });
   const [taskError, setTaskError] = useState('');
@@ -27,6 +28,20 @@ function ProjectDetail() {
   };
 
   useEffect(() => { fetchProject(); }, [id]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      if (user?.role !== 'admin') return;
+      try {
+        const res = await usersAPI.list();
+        setAssignableUsers(res.data.users.filter(u => u.role === 'member'));
+      } catch (err) {
+        console.error('Failed to load registered members:', err);
+      }
+    };
+
+    loadUsers();
+  }, [user]);
 
   const handleAddMember = async (e) => {
     e.preventDefault(); setMemberError('');
@@ -103,7 +118,22 @@ function ProjectDetail() {
                 <textarea value={taskForm.description} onChange={e => setTaskForm({...taskForm, description: e.target.value})} className="col-span-2 bg-transparent border border-gray-700 rounded-xl py-3 px-4 text-white placeholder:text-gray-500 outline-none focus:border-emerald-500 h-20 resize-none" placeholder="Description" />
                 <select value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="bg-[#1c1c1c] border border-gray-700 rounded-xl py-3 px-4 text-white outline-none">
                   <option value="">Unassigned</option>
-                  {project.members?.map(m => <option key={m._id} value={m._id}>{m.name}</option>)}
+                  {project.members?.filter(m => m.role === 'member').length > 0 && (
+                    <optgroup label="Project members">
+                      {project.members.filter(m => m.role === 'member').map(m => (
+                        <option key={m._id} value={m._id}>{m.name} ({m.email})</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {assignableUsers.length > 0 && (
+                    <optgroup label="Registered members">
+                      {assignableUsers
+                        .filter(member => !project.members?.some(pm => pm._id === member._id))
+                        .map(member => (
+                          <option key={member._id} value={member._id}>{member.name} ({member.email})</option>
+                        ))}
+                    </optgroup>
+                  )}
                 </select>
                 <select value={taskForm.priority} onChange={e => setTaskForm({...taskForm, priority: e.target.value})} className="bg-[#1c1c1c] border border-gray-700 rounded-xl py-3 px-4 text-white outline-none">
                   <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>

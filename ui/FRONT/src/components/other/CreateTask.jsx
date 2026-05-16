@@ -1,14 +1,28 @@
-import React, { useState } from 'react';
-import { tasksAPI } from '../../api/index';
+import React, { useState, useEffect } from 'react';
+import { tasksAPI, usersAPI } from '../../api/index';
 
 function CreateTask({ projects, onTaskCreated }) {
   const [form, setForm] = useState({ title:'', description:'', project:'', assignedTo:'', priority:'medium', category:'', dueDate:'' });
+  const [assignableUsers, setAssignableUsers] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
 
   // Get members of selected project
   const selectedProject = projects?.find(p => p._id === form.project);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const res = await usersAPI.list();
+        setAssignableUsers(res.data.users.filter(u => u.role === 'member'));
+      } catch (err) {
+        console.error('Failed to load registered members:', err);
+      }
+    };
+
+    loadUsers();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -55,7 +69,22 @@ function CreateTask({ projects, onTaskCreated }) {
             <select value={form.assignedTo} onChange={e => setForm({...form, assignedTo: e.target.value})}
               className="text-sm py-2 px-3 w-4/5 rounded-lg outline-none bg-[#1c1c1c] border border-gray-700 text-gray-200 focus:border-emerald-500 transition-colors">
               <option value="">Unassigned</option>
-              {selectedProject?.members?.map(m => <option key={m._id} value={m._id}>{m.name} ({m.email})</option>)}
+              {selectedProject?.members?.filter(m => m.role === 'member').length > 0 && (
+                <optgroup label="Project members">
+                  {selectedProject.members.filter(m => m.role === 'member').map(m => (
+                    <option key={m._id} value={m._id}>{m.name} ({m.email})</option>
+                  ))}
+                </optgroup>
+              )}
+              {assignableUsers.length > 0 && (
+                <optgroup label="Registered members">
+                  {assignableUsers
+                    .filter(member => !selectedProject?.members?.some(pm => pm._id === member._id))
+                    .map(member => (
+                      <option key={member._id} value={member._id}>{member.name} ({member.email})</option>
+                    ))}
+                </optgroup>
+              )}
             </select>
           </div>
           <div className="flex gap-4 w-4/5">
